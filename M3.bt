@@ -1,0 +1,334 @@
+//------------------------------------------------
+//      File: M3 MDX file format
+//   Authors: Songzee
+//   Version: 4
+//   Purpose: Help parsing the new MDX format used in Warcraft 3 Reforged
+//------------------------------------------------
+
+//-------------------//
+//      globals      //
+//-------------------//
+
+local long endOfMTLS;
+local long endOfGEOS;
+local long endOfGEOA;
+
+//--------------------------//
+//      helper structs      //
+//--------------------------//
+typedef struct {
+    char seqName[80];
+    long seqIntStart;
+    long seqIntEnd;
+    float seqMoveSpeed;
+    long seqNoLoop;
+    float seqRarity;
+    long seqLong;
+    byte unk[28];
+} SEQUENCE;
+
+typedef struct {
+    int unk4;
+    int unk5;
+    int unk6;
+    char shaderName[80];    // shader name
+} SHADERREF;
+
+typedef struct {
+    char texturePath[268];
+} TEXTUREPATH;
+
+typedef struct {
+    float x;
+    float y;
+} VECTOR2;
+
+typedef struct {
+    float x;
+    float y;
+    float z;
+} VECTOR3;
+
+typedef struct {
+    float x;
+    float y;
+    float z;
+    float w;
+} VECTOR4;
+
+typedef struct {
+    int frame;
+    float state;
+} FRAMESTATE;
+
+
+//---------------------//
+//      subchunks      //
+//---------------------//
+
+typedef struct {
+    char KMTA[4];
+    int nunks;
+    int unk1;               // always 1
+    int type;             // always -1
+    local int totalUnks = nunks * 8;
+    byte unk2[totalUnks];
+    byte unk3[160];
+
+    // if it has shader name, haven't figured out why but the last LAYS doesn't
+    if (FTell() < endOfMTLS)
+    {
+        SHADERREF shaderRef;        // reference to the shader
+    }
+} KMTA;
+
+typedef struct {
+    char LAYS[4];
+    int numberOfLAYS;
+    int fmode;
+    int shade;
+    int unk;
+    int texture;
+    int unk2;                       // always -1
+    float alpha;
+    byte unk3[8];                   // big numbers always the same
+    if (numberOfLAYS > 1)
+    {
+        KMTA kmta;
+    }
+    else
+    {
+        SHADERREF shaderRef;        // reference to the shader
+    }
+} LAYS;
+
+typedef struct {
+    char VRTX[4];
+    int numberOfVerts;
+    VECTOR3 vertices[numberOfVerts];
+} VRTX;
+
+typedef struct {
+    char NRMS[4];
+    int numberOfNormals;
+    VECTOR3 normals[numberOfNormals];
+} NRMS;
+
+typedef struct {
+    char PTYP[4];
+    int numberOfPTYP;
+    byte unk[(numberOfPTYP + 1) * 8];
+} PTYP;
+
+typedef struct {
+    char PVTX[4];
+    int numberOfIndices;
+    short indices[numberOfIndices];
+} PVTX;
+
+typedef struct {
+    char GNDX[4];
+    int numberOfVertexGroups;
+    if (numberOfVertexGroups > 0)
+        byte vertexGroup[numberOfVertexGroups];
+} GNDX;
+
+typedef struct {
+    char MTGC[4];
+    int numberOfMatricesGroupCount;
+    int matrixGroupCount[numberOfMatricesGroupCount];
+} MTGC;
+
+typedef struct {
+    char MATS[4];
+    int numberOfBoneMatrices;
+    int boneMatrices[numberOfBoneMatrices];
+    int unk1;
+    int unk2;
+    int unk3;
+    int unk4;
+    char name[112];
+} MATS;
+
+typedef struct {
+    char TANG[4];
+    int numberOfTangents;
+    VECTOR4 tangents[numberOfTangents];
+} TANG;
+
+typedef struct {
+    char SKIN[4];
+    int numberOfSkins;
+    byte skins[numberOfSkins];
+} SKIN;
+
+typedef struct {
+    char UVAS[4];
+    int unk;
+} UVAS;
+
+typedef struct {
+    char UVBS[4];
+    int numberOfUVs;
+    VECTOR2 UVs[numberOfUVs];
+
+    if (FTell() < endOfGEOS)
+        int unk;        // there's always an extra 4 bytes between the meshes, except the last one
+} UVBS;
+
+typedef struct {
+    int num;
+    int ltype;
+    int unk;
+    FRAMESTATE framestates[num];
+} KGAO;
+
+//------------------//
+//      chunks      //
+//------------------//
+typedef struct {
+    char MDLX[4];       // "MDLX"
+    char VERS[4];       // "VERS"
+    int versionA;       // version a = 4
+    int versionB;       // version b = 900
+} HEADER;
+
+typedef struct {
+    char MODL[4];               // "MODL"
+    int MODLSize;               // chunk size
+    char modelName[336];        // model name
+    int unk1;
+    int unk2;
+    byte unk[28];
+} MODL;
+
+typedef struct {
+    char SEQS[4];                           // "SEQS"
+    int SEQSsize;                           // chunk size
+    local int nSeqs = SEQSsize / 0x84;      // number of animation sequences
+    SEQUENCE sequence[nSeqs];               // animation sequence structs 
+} SEQS;
+
+typedef struct {
+    local long start = FTell();
+    char MTLS[4];                           // "MTLS"
+    int MTLSSize;                           // chunk size
+    int unk1;
+    byte unk2[88];
+    endOfMTLS = start + MTLSSize;
+    while (FTell() < endOfMTLS)
+    {
+        LAYS lays;                          // subchunk layers
+    }
+} MTLS;
+
+typedef struct {
+    char TEXS[4];                               // "TEXS"
+    int TEXSSize;                               // chunk size
+    local int totalTextures = TEXSSize / 268;   // total number of textures
+    TEXTUREPATH texturepaths[totalTextures];    // texture paths
+} TEXS;
+
+typedef struct {
+    char GEOS[4];       // chunk name 
+    int GEOSSize;       // chunk size
+    endOfGEOS = FTell() + GEOSSize; 
+    int unk;
+
+    while (FTell() < endOfGEOS)
+    {
+        VRTX vrtx;          // mesh vertices
+        NRMS nrms;          // mesh normals
+        PTYP ptyp;          // primitive type
+        PVTX pvtx;          // mesh triangles
+        GNDX gndx;          // vertex groups
+        MTGC mtgc;          // matrices group count
+        MATS mats;          // bone matrices
+        TANG tang;          // mesh tangents
+        SKIN skin;          // ?? maybe vertex weights, skinning means that in CG
+        UVAS uvas;          // ?? always 1, could be second UV layer if >1
+        UVBS uvbs;          // mesh UVs
+    }
+} GEOS;
+
+typedef struct {
+    char GEOA[4];
+    int GEOASize;
+    endOfGEOA = FTell() + GEOASize;
+    while (FTell() < endOfGEOA)
+    {
+        int bytes;
+        int unk1;
+        int unk2;
+        int unk3;
+        int unk4;
+        int unk5;
+        int j;
+        char k;
+        char g;
+        char a;
+        char o;
+        if (k == 'K' && g == 'G' && a == 'A' && o == 'O')
+            KGAO kgao;
+        else
+            FSeek(FTell() - 4);
+    }
+} GEOA;
+
+typedef struct {
+    // soon tm
+} BONE;
+
+typedef struct {
+    // soon tm
+} ATCH;
+
+typedef struct {
+    // soon tm
+} PIVT;
+
+typedef struct {
+    // soon tm
+} CORN;
+
+typedef struct {
+    // soon tm
+} RIBB;
+
+typedef struct {
+    // soon tm
+} CAMS;
+
+typedef struct {
+    // soon tm
+} EVTS;
+
+typedef struct {
+    // soon tm
+} CLID;
+
+typedef struct {
+    // soon tm
+} FAFX;
+
+typedef struct {
+    // soon tm
+} BPOS;
+
+HEADER header;      // header
+MODL modl;          // model info
+SEQS seqs;          // animation sequences
+MTLS mtls;          // materials
+TEXS texs;          // textures
+GEOS geos;          // geometry meshes
+GEOA geoa;          // geometry animation
+BONE bone;          // bones
+ATCH atch;          // bone attachments (bones/positions where item models are attached)
+PIVT pivt;          // bone pivots
+CORN corn;          // ?? lol
+RIBB ribb;          // ?? lol2
+CAMS cams;          // cameras
+EVTS evts;          // events
+CLID clid;          // colliders
+FAFX fafx;          // effects (particles ?)
+BPOS bpos;          // bones binding poses
