@@ -2,12 +2,17 @@
 using System.Collections.Generic;
 using UnityEngine;
 using System.IO;
+using System.Text.RegularExpressions;
+using System;
+using System.Linq;
+using UnityEditor;
 
 namespace MDX
 {
     public class Load : MonoBehaviour
     {
         public Data data;
+        public UnityEngine.Material defaultMaterial;
         private Submesh submeshBuffer = new Submesh();
 
         // Start is called before the first frame update
@@ -22,9 +27,10 @@ namespace MDX
             BuildModel();
         }
 
-        private string filePath = @"D:\creeps\chenstormstout\chenstormstout.mdx";
-        //private string filePath = @"D:\creeps\ancienthydra\ancienthydra.mdx";
-
+        string filePath = @"D:\creeps\chenstormstout\chenstormstout.mdx";
+        //string filePath = @"D:\creeps\ancienthydra\ancienthydra.mdx";
+        //string filePath = @"D:\creeps\murlocwarrior\murlocwarrior.mdx";
+        
         public void ReadMDX()
         {
             using (FileStream fs = new FileStream(filePath, FileMode.Open))
@@ -51,8 +57,8 @@ namespace MDX
                                 fs.Position += chunkSize;
                                 break;
                             case "MTLS":
-                                //ReadMTLS(br, chunkSize); // skip WIP
-                                fs.Position += chunkSize;
+                                ReadMTLS(br, chunkSize); // skip WIP
+                                //fs.Position += chunkSize;
                                 break;
                             case "GEOS":
                                 ReadGEOS(br, chunkSize);
@@ -85,71 +91,69 @@ namespace MDX
         private void ReadMTLS(BinaryReader br, int chunkSize)
         {
             long endPosition = br.BaseStream.Position + chunkSize;
-            int sizeA = br.ReadInt32();
+            int unk1 = br.ReadInt32();
             br.BaseStream.Position += 88; // ???
+            int totalLayers = 0;        // seems to coincide with number of submeshes
 
             while (br.BaseStream.Position < endPosition)
             {
                 string LAYS = new string(br.ReadChars(4));
-                if (LAYS == "LAYS")
+
+                MDX.Material material = new MDX.Material();
+                material.unk0 = br.ReadInt32();                      // if it's larger than 1 then a KMTA chunk follows, otherwise just shader reference
+                material.fmode = br.ReadInt32();
+                material.shade = br.ReadInt32();
+                material.unk2 = br.ReadInt32();
+                material.texture = br.ReadInt32();
+                material.unk3 = br.ReadInt32();                     // ?? always -1
+                material.alpha = br.ReadSingle();                   // 0
+                material.flags = br.ReadBytes(8);
+                data.model.materials.Add(material);
+
+                //print("unk0: " + material.unk0 + " | " + "fmode: " + material.fmode + " | " + "shade: " + material.shade + " | " + "unk2: " + material.unk2 + " | " + "texture: " + material.texture + " | " + "unk3: " + material.unk3 + " | " + "alpha: " + material.alpha);
+
+                if (material.unk0 > 1)
                 {
-                    int numberOfLAYS = br.ReadInt32();
-                    for (int j = 0; j < numberOfLAYS; j++)
+                    string KMTA = new string(br.ReadChars(4));
+                    int nunks = br.ReadInt32();
+                    int unk4 = br.ReadInt32();
+                    int type = br.ReadInt32(); // ?? always -1 ?
+                    for (int i = 0; i < nunks; i++)
                     {
-                        int numberOfSubLays = br.ReadInt32(); // if this is >1 then KMTA exists ~~
-                        long endPositionB = numberOfSubLays + br.BaseStream.Position - 4;
+                        int unk5 = br.ReadInt32();
+                        int unk6 = br.ReadInt32();
+                    }
+                    br.BaseStream.Position += 160; // ??
 
-                        int fmode = br.ReadInt32(); // 
-                        int shade = br.ReadInt32(); // 
-
-                        int unk = br.ReadInt32(); // ??
-
-                        int texture = br.ReadInt32();  // 
-
-                        int unk2 = br.ReadInt32(); // ?? always -1
-
-                        float alpha = br.ReadSingle();  // 0
-
-                        br.BaseStream.Position += 8; // ?? big numbers
-
-                        string KMTA = new string(br.ReadChars(4));
-
-                        if (KMTA == "KMTA")
-                        //if (numberOfSubLays > 1)
-                        {
-                            //string KMTA = new string(br.ReadChars(4));
-                            int nunks = br.ReadInt32();
-                            br.BaseStream.Position += 4; // ?? always 1 ?
-                            uint ltype = br.ReadUInt32(); // ?? always -1 ?
-
-                            for (int k = 0; k < nunks; k++)
-                            {
-                                br.BaseStream.Position += 8; // ??
-                            }
-
-                            br.BaseStream.Position += 160; // ??
-
-                            // if it has shader name
-                            br.BaseStream.Position += 12; // ??
-
-                            string shaderName = new string(br.ReadChars(80));
-                            print(shaderName);
-                        }
-                        else
-                        {
-                            br.BaseStream.Position += 4; // ??
-                            string shaderName = new string(br.ReadChars(80));
-                            print(shaderName);
-                        }
-
+                    if (br.BaseStream.Position < endPosition)
+                    {
+                        int unk7 = br.ReadInt32();
+                        int unk8 = br.ReadInt32();
+                        int unk9 = br.ReadInt32();
+                        string shaderName = new string(br.ReadChars(80));
                     }
                 }
+                else
+                {
+                    int unk7 = br.ReadInt32();
+                    int unk8 = br.ReadInt32();
+                    int unk9 = br.ReadInt32();
+                    string shaderName = new string(br.ReadChars(80));
+                }
+                totalLayers++;
             }
         }
 
         private void ReadTEXS(BinaryReader br, int chunkSize)
         {
-            br.BaseStream.Position += chunkSize;
+            int totalTextures = chunkSize / 268;        // total number of texture files, 268 is the fixed string size
+            for (int t = 0; t < totalTextures; t++)
+            {
+                br.BaseStream.Position += 4; // skip 4 empty bytes
+                string texturePath = ReadString(br, 264);//new string(br.ReadChars(264)).Trim();
+                //print(t + " - " +texturePath);
+                data.model.textures.Add(texturePath);
+            }
         }
 
         private void ReadGEOS(BinaryReader br, int chunkSize)
@@ -214,6 +218,16 @@ namespace MDX
             data.model.submeshCount++;
             submeshBuffer = new Submesh();
 
+            // checking out the 4 bytes before each VRTX
+            br.BaseStream.Position -= 8; // going back 8 because of the VRTX ID
+            submeshBuffer.unk1 = br.ReadByte();
+            submeshBuffer.unk2 = br.ReadByte();
+            submeshBuffer.unk3 = br.ReadByte();
+            submeshBuffer.unk4 = br.ReadByte();         // always 0
+            //print(submeshBuffer.unk1 + " - " + submeshBuffer.unk2 + " - " + submeshBuffer.unk3 + " - " + submeshBuffer.unk4);
+            br.BaseStream.Position += 4; // going over VRTX ID
+            ////
+
             int numberOfVerts = br.ReadInt32();
             for (int k = 0; k < numberOfVerts; k++)
             {
@@ -264,7 +278,7 @@ namespace MDX
             }
         }
 
-        // Vertex Groups
+        // vertex Groups
         private void ReadGNDX(BinaryReader br)
         {
             int numberOfGroups = br.ReadInt32();
@@ -274,7 +288,7 @@ namespace MDX
             }
         }
 
-        // Matrices Group Count
+        // matrices Group Count
         private void ReadMTGC(BinaryReader br)
         {
             int numberOFMTGC = br.ReadInt32();
@@ -284,7 +298,7 @@ namespace MDX
             }
         }
 
-        // Bone Matrices
+        // bone matrices
         private void ReadMATS(BinaryReader br)
         {
             int numberOfMats = br.ReadInt32();
@@ -292,8 +306,9 @@ namespace MDX
             {
                 br.ReadInt32();
             }
-            br.BaseStream.Position += 16; // skip 16
-            br.BaseStream.Position += 112; // skip 112 // contains a string too
+            submeshBuffer.id = br.ReadInt32();              // submesh ID, used for correctly assigning materials
+            br.ReadBytes(12);                               // same ID repeats 3 times
+            submeshBuffer.name = ReadString(br, 112);       // submesh name
         }
 
         // read mesh tangents
@@ -310,7 +325,7 @@ namespace MDX
             }
         }
 
-        // ???
+        // ??? vertex weights maybe
         private void ReadSKIN(BinaryReader br)
         {
             int numberOfSkins = br.ReadInt32(); // @ 100 to 50k
@@ -320,74 +335,130 @@ namespace MDX
             }
         }
 
-        // ???
+        // ??? second uv channel maybe, if that int32 is >1 ?
         private void ReadUVAS(BinaryReader br)
         {
-            print(br.ReadInt32());
-            //br.ReadInt32();
+            br.ReadInt32();
         }
 
         // read mesh uvs
         private void ReadUVBS(BinaryReader br, int chunkSize, long chunkStartPosition)
         {
-            // long chunkStartPosition = br.BaseStream.Position;
             int numberOfUVs = br.ReadInt32();
             for (int i = 0; i < numberOfUVs; i++)
             {
                 float x = br.ReadSingle();
                 float y = br.ReadSingle();
-                submeshBuffer.uvs.Add(new Vector2(x, 1 - y));
+                submeshBuffer.uvs.Add(new Vector2(x, y));
             }
-
-
             if (br.BaseStream.Position < chunkStartPosition + chunkSize)
                 br.BaseStream.Position += 4; // skip 4 unk
-
             data.model.submeshes.Add(submeshBuffer);
-
-            //int unk1 = br.ReadByte();
-            //int unk2 = br.ReadByte();
-            //int unk3 = br.ReadByte();
-            //int unk4 = br.ReadByte();
-            //print(unk1 + " " + unk2 + " " + unk3 + " " + unk4);
-            //int unk1 = br.ReadInt16();
-            //int unk2 = br.ReadInt16();
-            //print(unk1 + " " + unk2);
-            //br.BaseStream.Position += 4; // skip 4 unknown
-
-            //print(br.BaseStream.Position);
-
-            //BuildMesh();
-            //ClearBuffer();
         }
 
         public void BuildModel()
         {
             Debug.Log("Building Model : " + data.model.name + " | " + "Submesh Count : " + data.model.submeshCount);
 
-            // haven't determined which submesh is what lod yet so this is a hack~~
-            int lod0SubmeshCount = data.model.submeshCount / 4;
+            // filter out LOD1 LOD2 LOD3 // the lazy way
+            List<int> LoD0Indices = new List<int>();
+            for (int i = 0; i < data.model.submeshCount; i++)
+            {
+                if (!data.model.submeshes[i].name.Contains("LOD"))
+                {
+                    LoD0Indices.Add(i);
+                }
+            }
 
+            // Object
             GameObject model = new GameObject();
             model.name = data.model.name;
 
-            for (int sm = 0; sm < lod0SubmeshCount; sm++)
+            // Submeshes
+            for (int sm = 0; sm < LoD0Indices.Count; sm++)
             {
+                int index = LoD0Indices[sm];
+
+                // Object
                 GameObject submesh = new GameObject();
-                submesh.name = "Submesh_" + sm;
+                submesh.name = data.model.submeshes[index].name;
                 submesh.transform.SetParent(model.transform);
+
+                // Mesh
                 Mesh m = new Mesh();
-                m.SetVertices(data.model.submeshes[sm].vertices);
-                m.SetTriangles(data.model.submeshes[sm].triangles, 0);
-                m.SetNormals(data.model.submeshes[sm].normals);
-                m.SetTangents(data.model.submeshes[sm].tangents);
-                m.SetUVs(0, data.model.submeshes[sm].uvs);
+                m.SetVertices(data.model.submeshes[index].vertices);
+                m.SetTriangles(data.model.submeshes[index].triangles, 0);
+                m.SetNormals(data.model.submeshes[index].normals);
+                m.SetTangents(data.model.submeshes[index].tangents);
+                m.SetUVs(0, data.model.submeshes[index].uvs);
                 MeshRenderer meshRenderer = submesh.AddComponent<MeshRenderer>();
                 MeshFilter meshFilter = submesh.AddComponent<MeshFilter>();
                 meshFilter.mesh = m;
-                Material material = new Material(Shader.Find("Standard"));
-                meshRenderer.sharedMaterial = material;
+                
+                // Texture
+                string folderPath = Path.GetDirectoryName(filePath);
+                string textureName_ = data.model.textures[data.model.materials[data.model.submeshes[index].id].texture];      // *sweat in RP*
+                textureName_ = PathHelper.GetFileName(textureName_);
+                textureName_ = textureName_.Remove(textureName_.Length - 12);
+
+                string diffuseTexturePath = folderPath + @"\" + textureName_ + "diffuse" + ".dds";
+                string emissiveTexturePath = folderPath + @"\" + textureName_ + "emissive" + ".dds";
+                string normalTexturePath = folderPath + @"\" + textureName_ + "normal" + ".dds";
+                string ormTexturePath = folderPath + @"\" + textureName_ + "orm" + ".dds";
+                // Material
+                UnityEngine.Material mat = new UnityEngine.Material(defaultMaterial);
+                
+                if (File.Exists(diffuseTexturePath))
+                {
+                    Texture2D texture = DDS.ImportToTexture2D(diffuseTexturePath);
+                    mat.SetTexture("_MainTex", texture);
+                }
+                if (File.Exists(emissiveTexturePath))
+                {
+                    mat.EnableKeyword("_EMISSION");
+                    Texture2D texture = DDS.ImportToTexture2D(emissiveTexturePath);
+                    mat.SetTexture("_EmissionMap", texture);
+                }
+                if (File.Exists(normalTexturePath))
+                {
+                    mat.EnableKeyword("_NORMALMAP");
+                    Texture2D texture = DDS.ImportToTexture2D(normalTexturePath);
+                    mat.SetTexture("_BumpMap", texture);
+                }
+                if (File.Exists(ormTexturePath))
+                {
+                    mat.EnableKeyword("_METALLICGLOSSMAP");
+                    Texture2D texture = DDS.ImportToTexture2D(ormTexturePath);
+                    mat.SetTexture("_MetallicGlossMap", texture);
+                }
+                mat.SetFloat("_Glossiness", 0.44f);
+                mat.SetFloat("_GlossMapScale", 0.44f);
+                meshRenderer.material = mat;
             }
+        }
+
+        public string RemoveInvalidChars(string filename)
+        {
+            return string.Concat(filename.Split(Path.GetInvalidFileNameChars()));
+        }
+
+        public static string RemoveWhitespace(string str)
+        {
+            return string.Join("", str.Split(default(string[]), StringSplitOptions.RemoveEmptyEntries));
+        }
+
+        public string ReadString(BinaryReader br, int size)
+        {
+            List<char> collectedChars = new List<char>();
+            for (int i = 0; i < size; i++)
+            {
+                char c = br.ReadChar();
+                if (c != '\0')
+                {
+                    collectedChars.Add(c);
+                }
+            }
+            return new string(collectedChars.ToArray());
         }
 
         /*

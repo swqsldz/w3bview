@@ -143,11 +143,11 @@ typedef struct {
     char MATS[4];
     int numberOfBoneMatrices;
     int boneMatrices[numberOfBoneMatrices];
-    int unk1;
-    int unk2;
-    int unk3;
-    int unk4;
-    char name[112];
+    int submeshID;                              // mesh ID, used for correctly assigning materials
+    int submeshID1;                             // same ID
+    int submeshID2;                             // same ID
+    int submeshID3;                             // same ID
+    char meshName[112];                         // mesh name
 } MATS;
 
 typedef struct {
