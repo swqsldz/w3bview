@@ -12,6 +12,9 @@
 local long endOfMTLS;
 local long endOfGEOS;
 local long endOfGEOA;
+local long endOfBONE;
+local long endOfATCH;
+local long endOfPIVT;
 
 //--------------------------//
 //      helper structs      //
@@ -61,6 +64,59 @@ typedef struct {
     float state;
 } FRAMESTATE;
 
+typedef struct {
+    float x;
+    float y;
+    float z;
+    float w;
+} QUATERNION;
+
+typedef struct (int lineType){
+    int time;
+    VECTOR3 point;
+    if (lineType > 1)
+    {
+        VECTOR3 inTan;
+        VECTOR3 outTan;
+    }
+} TRACKPOINT3;
+
+typedef struct (int lineType){
+    int time;
+    QUATERNION point;
+    if (lineType > 1)
+    {
+        QUATERNION inTan;
+        QUATERNION outTan;
+    }
+} TRACKPOINT4;
+
+typedef struct (int size) {
+    char theString[size];
+} STRING;
+
+typedef struct (int size) {
+    byte data[size];
+} SKIP;
+
+typedef struct{
+    float row[3];
+} MATRIX3x4[4];
+
+typedef struct{
+    MATRIX3x4 matrix;
+} READMATRIX3x4;
+
+typedef struct{
+    byte boneIndex0;
+    byte boneIndex1;
+    byte boneIndex2;
+    byte boneIndex3;
+    byte boneWeight0;
+    byte boneWeight1;
+    byte boneWeight2;
+    byte boneWeight3;
+} BONEWEIGHT;
 
 //---------------------//
 //      subchunks      //
@@ -159,7 +215,7 @@ typedef struct {
 typedef struct {
     char SKIN[4];
     int numberOfSkins;
-    byte skins[numberOfSkins];
+    BONEWEIGHT boneWeight[numberOfSkins/8];
 } SKIN;
 
 typedef struct {
@@ -183,6 +239,27 @@ typedef struct {
     FRAMESTATE framestates[num];
 } KGAO;
 
+typedef struct {
+    int num;
+    int lineType;
+    int unk1;
+    TRACKPOINT3 translationTrack(lineType)[num] <optimize=false>;
+} KGTR;
+
+typedef struct {
+    int num;
+    int lineType;
+    int unk1;
+    TRACKPOINT4 rotationTrack(lineType)[num] <optimize=false>;   
+} KGRT;
+
+typedef struct {
+    int num;
+    int lineType;
+    int unk1;
+    TRACKPOINT3 scaleTrack(lineType)[num] <optimize=false>;
+} KGSC;
+
 //------------------//
 //      chunks      //
 //------------------//
@@ -197,9 +274,9 @@ typedef struct {
     char MODL[4];               // "MODL"
     int MODLSize;               // chunk size
     char modelName[336];        // model name
-    int unk1;
-    int unk2;
-    byte unk[28];
+    int unk1;                   // ??
+    int unk2;                   // ??
+    byte unk[28];               // ???????
 } MODL;
 
 typedef struct {
@@ -213,8 +290,8 @@ typedef struct {
     local long start = FTell();
     char MTLS[4];                           // "MTLS"
     int MTLSSize;                           // chunk size
-    int unk1;
-    byte unk2[88];
+    int unk1;                               // ??
+    byte unk2[88];                          // ?????????
     endOfMTLS = start + MTLSSize;
     while (FTell() < endOfMTLS)
     {
@@ -230,8 +307,8 @@ typedef struct {
 } TEXS;
 
 typedef struct {
-    char GEOS[4];       // chunk name 
-    int GEOSSize;       // chunk size
+    char GEOS[4];           // chunk name 
+    int GEOSSize;           // chunk size
     endOfGEOS = FTell() + GEOSSize; 
     int unk;
 
@@ -245,7 +322,7 @@ typedef struct {
         MTGC mtgc;          // matrices group count
         MATS mats;          // bone matrices
         TANG tang;          // mesh tangents
-        SKIN skin;          // ?? maybe vertex weights, skinning means that in CG
+        SKIN skin;          // vertex weights
         UVAS uvas;          // ?? always 1, could be second UV layer if >1
         UVBS uvbs;          // mesh UVs
     }
@@ -276,43 +353,139 @@ typedef struct {
 } GEOA;
 
 typedef struct {
-    // soon tm
+    char BONE[4];
+    int BONESize;
+    endOfBONE = FTell() + BONESize;
+    local long end;
+    while (FTell() < endOfBONE)
+    {
+        int bytes;                          // size of data for this bone
+        end = FTell() + bytes - 4;          // stream end position for this bone
+        STRING name(80);                    // bone name
+        int index;                          // index of the bone (they're in order anyway 0, 1, 2..)
+        int parent;                         // bone parent index
+        int unk1;                           // always 256
+        while (FTell() < end)
+        {
+            char ID1; // type of transform
+            char ID2;
+            char ID3;
+            char ID4;
+            if (ID1 == 'K' && ID2 == 'G' && ID3 == 'T' && ID4 == 'R')
+            {
+                KGTR kgtr;      // read translation track
+            }
+            else if (ID1 == 'K' && ID2 == 'G' && ID3 == 'R' && ID4 == 'T')
+            {
+                KGRT kgrt;      // read rotation track
+            }
+            else if (ID1 == 'K' && ID2 == 'G' && ID3 == 'S' && ID4 == 'C')
+            {
+                KGSC kgsc;      // read scale track
+            }
+        }
+        int id;                             // ?? always -1
+        int aid;                            // ?? always -1
+    }
 } BONE;
 
 typedef struct {
-    // soon tm
+    char ATCH[4];
+    int ATCHSize;
+    endOfATCH = FTell() + ATCHSize;
+    local long end;
+    while (FTell() < endOfATCH)
+    {
+        int bytes;                          // size of this attachment data
+        end = FTell() + bytes - 4;
+        int unk1;                           // ??
+        STRING name(80);                    // name of the area where it's attached (ex: head)
+        int index;                          // attachment index (starts after last bone)
+        int parent;                         // bone index for this attachment
+        int unk2;                           // ??
+        while (FTell() < end)
+        {
+            char ID1; // type of transform
+            char ID2;
+            char ID3;
+            char ID4;
+            if (ID1 == 'K' && ID2 == 'G' && ID3 == 'T' && ID4 == 'R')
+            {
+                KGTR kgtr;      // read translation track
+            }
+            else if (ID1 == 'K' && ID2 == 'G' && ID3 == 'R' && ID4 == 'T')
+            {
+                KGRT kgrt;      // read rotation track
+            }
+            else if (ID1 == 'K' && ID2 == 'G' && ID3 == 'S' && ID4 == 'C')
+            {
+                KGSC kgsc;      // read scale track
+            }
+            else
+            {
+                SKIP unk3(260); // empty space
+            }         
+        }
+    }    
 } ATCH;
 
 typedef struct {
-    // soon tm
+    char PIVT[4];
+    int PIVTSize;
+    endOfPIVT = FTell() + PIVTSize;
+    while (FTell() < endOfPIVT)
+    {
+        VECTOR3 pivot;
+    }
 } PIVT;
 
 typedef struct {
+    char CORN[4];
+    int CORNSize;
+    FSeek(FTell() + CORNSize);
     // soon tm
 } CORN;
 
 typedef struct {
+    char RIBB[4];
+    int RIBBSize;
+    FSeek(FTell() + RIBBSize);
     // soon tm
 } RIBB;
 
 typedef struct {
+    char CAMS[4];
+    int CAMSSize;
+    FSeek(FTell() + CAMSSize);
     // soon tm
 } CAMS;
 
 typedef struct {
+    char EVTS[4];
+    int EVTSSize;
+    FSeek(FTell() + EVTSSize);
     // soon tm
 } EVTS;
 
 typedef struct {
+    char CLID[4];
+    int CLIDSize;
+    FSeek(FTell() + CLIDSize);
     // soon tm
 } CLID;
 
 typedef struct {
+    char FAFX[4];
+    int FAFXSize;
+    FSeek(FTell() + FAFXSize);
     // soon tm
 } FAFX;
 
 typedef struct {
-    // soon tm
+    char BPOS[4];
+    int BPOSSize;
+    int count;
+    READMATRIX3x4 bindPose[count];     // they only store 3x4, bottom row is always (0,0,0,1) // thanks Deamon
 } BPOS;
 
 HEADER header;      // header
@@ -322,11 +495,11 @@ MTLS mtls;          // materials
 TEXS texs;          // textures
 GEOS geos;          // geometry meshes
 GEOA geoa;          // geometry animation
-BONE bone;          // bones
+BONE bone;          // bone animation
 ATCH atch;          // bone attachments (bones/positions where item models are attached)
 PIVT pivt;          // bone pivots
 CORN corn;          // ?? lol
-RIBB ribb;          // ?? lol2
+RIBB ribb;          // ?? ribbon emitter
 CAMS cams;          // cameras
 EVTS evts;          // events
 CLID clid;          // colliders

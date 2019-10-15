@@ -11,8 +11,9 @@ namespace MDX
 {
     public class Load : MonoBehaviour
     {
-        public Data data;
+        public static Data data;
         public UnityEngine.Material defaultMaterial;
+        public Debug_Bones debugBones;
         private Submesh submeshBuffer = new Submesh();
 
         // Start is called before the first frame update
@@ -25,12 +26,19 @@ namespace MDX
 
             ReadMDX();
             BuildModel();
+
+            if (debugBones.gameObject.activeSelf)
+            {
+                debugBones.BuildPivots_DEBUG();
+            }
         }
 
         string filePath = @"D:\creeps\chenstormstout\chenstormstout.mdx";
         //string filePath = @"D:\creeps\ancienthydra\ancienthydra.mdx";
         //string filePath = @"D:\creeps\murlocwarrior\murlocwarrior.mdx";
+        //string filePath = @"D:\creeps\tuskar\tuskar.mdx";
         
+
         public void ReadMDX()
         {
             using (FileStream fs = new FileStream(filePath, FileMode.Open))
@@ -54,17 +62,28 @@ namespace MDX
                                 ReadMODL(br);
                                 break;
                             case "SEQS":
-                                fs.Position += chunkSize;
+                                ReadSEQS(br, chunkSize);
                                 break;
                             case "MTLS":
-                                ReadMTLS(br, chunkSize); // skip WIP
-                                //fs.Position += chunkSize;
+                                ReadMTLS(br, chunkSize);
                                 break;
                             case "GEOS":
                                 ReadGEOS(br, chunkSize);
                                 break;
                             case "TEXS":
                                 ReadTEXS(br, chunkSize);
+                                break;
+                            case "GEOA":
+                                ReadGEOA(br, chunkSize);
+                                break;
+                            case "BONE":
+                                ReadBONE(br, chunkSize);
+                                break;
+                            case "ATCH":
+                                ReadATCH(br, chunkSize);
+                                break;
+                            case "PIVT":
+                                ReadPIVT(br, chunkSize);
                                 break;
                             default:
                                 fs.Position += chunkSize;
@@ -76,18 +95,35 @@ namespace MDX
             }
         }
 
+        // read model info
         private void ReadMODL(BinaryReader br)
         {
-            data.model.name = new string(br.ReadChars(336)).Trim();
+            data.model.name = ReadString(br, 336);
             br.BaseStream.Position += 8;
             br.BaseStream.Position += 28;
         }
 
-        private void ReadSEQS()
+        // read animation sequences
+        private void ReadSEQS(BinaryReader br, int chunkSize)
         {
-
+            data.model.animationSequences = new List<AnimationSequence>();
+            int nSeqs = chunkSize / 0x84;      // number of animation sequences
+            for (int s = 0; s < nSeqs; s++)
+            {
+                AnimationSequence animationSequence = new AnimationSequence();
+                animationSequence.name = ReadString(br, 80);
+                animationSequence.seqIntStart = br.ReadInt32();
+                animationSequence.seqIntEnd = br.ReadInt32();
+                animationSequence.seqMoveSpeed = br.ReadSingle();
+                animationSequence.seqNoLoop = br.ReadInt32();
+                animationSequence.seqRarity = br.ReadSingle();
+                animationSequence.seqLong = br.ReadInt32();
+                br.BaseStream.Position += 28;                           // skip unk
+                data.model.animationSequences.Add(animationSequence);
+            }
         }
 
+        // read materials
         private void ReadMTLS(BinaryReader br, int chunkSize)
         {
             long endPosition = br.BaseStream.Position + chunkSize;
@@ -144,18 +180,7 @@ namespace MDX
             }
         }
 
-        private void ReadTEXS(BinaryReader br, int chunkSize)
-        {
-            int totalTextures = chunkSize / 268;        // total number of texture files, 268 is the fixed string size
-            for (int t = 0; t < totalTextures; t++)
-            {
-                br.BaseStream.Position += 4; // skip 4 empty bytes
-                string texturePath = ReadString(br, 264);//new string(br.ReadChars(264)).Trim();
-                //print(t + " - " +texturePath);
-                data.model.textures.Add(texturePath);
-            }
-        }
-
+        // read geometry
         private void ReadGEOS(BinaryReader br, int chunkSize)
         {
             long chunkStartPosition = br.BaseStream.Position;
@@ -211,6 +236,230 @@ namespace MDX
                 }
             }
         }
+
+        // read textures
+        private void ReadTEXS(BinaryReader br, int chunkSize)
+        {
+            int totalTextures = chunkSize / 268;        // total number of texture files, 268 is the fixed string size
+            for (int t = 0; t < totalTextures; t++)
+            {
+                br.BaseStream.Position += 4; // skip 4 empty bytes
+                string texturePath = ReadString(br, 264);//new string(br.ReadChars(264)).Trim();
+                //print(t + " - " +texturePath);
+                data.model.textures.Add(texturePath);
+            }
+        }
+
+        // read geometry animation
+        private void ReadGEOA(BinaryReader br, int chunkSize)
+        {
+            long endPosition = br.BaseStream.Position + chunkSize;
+            while (br.BaseStream.Position < endPosition)
+            {
+                int bytes = br.ReadInt32();
+                int unk1 = br.ReadInt32();
+                int unk2 = br.ReadInt32();
+                int unk3 = br.ReadInt32();
+                int unk4 = br.ReadInt32();
+                int unk5 = br.ReadInt32();
+                int j = br.ReadInt32();
+                string KGAO = new string(br.ReadChars(4));
+                if (KGAO == "KGAO")
+                {
+                    int num = br.ReadInt32();
+                    int ltype = br.ReadInt32();
+                    int unk = br.ReadInt32();
+                    for (int i = 0; i < num; i++)
+                    {
+                        int frame = br.ReadInt32();
+                        float state = br.ReadSingle();
+                    }
+                }
+                else
+                {
+                    br.BaseStream.Position -= 4;
+                }
+            }
+        }
+
+        // read bone animation
+        private void ReadBONE(BinaryReader br, int chunkSize)
+        {
+            long endPosition = br.BaseStream.Position + chunkSize;
+            while (br.BaseStream.Position < endPosition)
+            {
+                int bytes = br.ReadInt32();
+
+                long endPosition2 = br.BaseStream.Position + bytes - 4;
+
+                Bone bone = new Bone();                 // create a new instance of Bone
+                bone.name = ReadString(br, 80);         // bone name string
+                bone.index = br.ReadInt32();            // index of the bone 0, 1, 2..
+                bone.parent = br.ReadInt32();           // bone parent index
+                int unk1 = br.ReadInt32();              // always 256
+                while (br.BaseStream.Position < endPosition2)
+                {
+                    string curChunk = new string(br.ReadChars(4));
+                    switch(curChunk)
+                    {
+                        case "KGTR":
+                            bone.translation = ReadKG(br, curChunk);
+                            break;
+                        case "KGRT":
+                            bone.rotation = ReadKG(br, curChunk);
+                            break;
+                        case "KGSC":
+                            bone.scale = ReadKG(br, curChunk);
+                            break;
+                        default:
+                            break;
+                    }
+                }
+                bone.id = br.ReadInt32();                               // always -1
+                bone.aid = br.ReadInt32();                              // always -1
+                if (bone.id >= 0)
+                {
+                    data.model.submeshes[bone.id].geoBone = bone.index;
+                    print(bone.name + " " + bone.id);
+                }
+                else
+                    for (int i = 0; i < data.model.submeshes.Count; i++)
+                    {
+                        data.model.submeshes[i].geoBone = bone.index;
+                    }
+
+                data.model.bones.Add(bone);
+            }
+        }
+
+        // read attachment points
+        private void ReadATCH(BinaryReader br, int chunkSize)
+        {
+            data.model.attachments = new List<Attachment>();
+            long endPosition = br.BaseStream.Position + chunkSize;
+            while(br.BaseStream.Position < endPosition)
+            {
+                Attachment attachment = new Attachment();
+                int bytes = br.ReadInt32();                                         // size of current attachment
+                long endPosition2 = br.BaseStream.Position + bytes - 4;             // stream end position of current attachment
+                int unk1 = br.ReadInt32();                                          // ??
+                attachment.name = ReadString(br, 80);                               // attachment name
+                attachment.index = br.ReadInt32();                                  // attachment index
+                attachment.parent = br.ReadInt32();                                 // parent bone index of attachment
+                int unk2 = br.ReadInt32();                                          // ??
+                while (br.BaseStream.Position < endPosition2)
+                {
+                    string curChunk = new string(br.ReadChars(4));
+                    switch (curChunk)
+                    {
+                        case "KGTR":
+                            attachment.translation = ReadKG(br, curChunk);                           // read translation track
+                            break;
+                        case "KGRT":
+                            attachment.rotation = ReadKG(br, curChunk);                           // read rotation track
+                            break;
+                        case "KGSC":
+                            attachment.scale = ReadKG(br, curChunk);                           // read scale track
+                            break;
+                        default:
+                            br.BaseStream.Position += 260;                  // empty space
+                            break;
+                    }
+                }
+                data.model.attachments.Add(attachment);
+            }
+        }
+
+        // read track points
+        private List<TrackPoint> ReadKG(BinaryReader br, string curChunk) // make sure you return data
+        {
+            float x;
+            float y;
+            float z;
+            float w;
+            object pt;
+            List<TrackPoint> trackPoints = new List<TrackPoint>();
+            int num = br.ReadInt32();
+            int lineType = br.ReadInt32();
+            int unk1 = br.ReadInt32();
+
+            for (int j = 0; j < num; j++)
+            {
+                TrackPoint trackPoint = new TrackPoint();
+                trackPoint.time = br.ReadInt32();
+
+                if (curChunk == "KGRT")
+                {
+                    x = br.ReadSingle();
+                    y = br.ReadSingle();
+                    z = br.ReadSingle();
+                    w = br.ReadSingle();
+                    pt = new Quaternion(y, z, x, w);
+                }
+                else
+                {
+                    x = br.ReadSingle();
+                    y = br.ReadSingle();
+                    z = br.ReadSingle();
+                    if (curChunk == "KGSC")
+                    {
+                        pt = new Vector3(y, -z, x);
+                    }
+                    else
+                    {
+                        pt = new Vector3(y, z, x);
+                    }
+                }
+                trackPoint.point = pt;
+                
+                if (lineType > 1)
+                {
+                    x = br.ReadSingle();
+                    y = br.ReadSingle();
+                    z = br.ReadSingle();
+                    if (curChunk == "KGRT")
+                    {
+                        w = br.ReadSingle();
+                        pt = new Quaternion(y, z, x, w);
+                    }
+                    else
+                    {
+                        pt = new Vector3(y, z, x);
+                    }
+                    trackPoint.inTan = pt;
+                    x = br.ReadSingle();
+                    y = br.ReadSingle();
+                    z = br.ReadSingle();
+                    if (curChunk == "KGRT")
+                    {
+                        w = br.ReadSingle();
+                        pt = new Quaternion(y, z, x, w);
+                    }
+                    else
+                    {
+                        pt = new Vector3(y, z, x);
+                    }
+                    trackPoint.outTan = pt;
+                }
+                
+                trackPoints.Add(trackPoint);
+            }
+            return trackPoints;
+        }
+
+        private void ReadPIVT(BinaryReader br, int chunkSize)
+        {
+            long endPosition = br.BaseStream.Position + chunkSize;
+            while (br.BaseStream.Position < endPosition)
+            {
+                float x = br.ReadSingle();
+                float y = br.ReadSingle();
+                float z = br.ReadSingle();
+                data.model.pivots.Add(new Vector3(y, z, x));
+            }
+        }
+
+        #region Geometry Subchunks
 
         // read mesh vertices
         private void ReadVRTX(BinaryReader br)
@@ -291,21 +540,56 @@ namespace MDX
         // matrices Group Count
         private void ReadMTGC(BinaryReader br)
         {
-            int numberOFMTGC = br.ReadInt32();
+            submeshBuffer.boneGroups = new List<int>();
+            int numberOFMTGC = br.ReadInt32();              // coincides with the number of bones
             for (int i = 0; i < numberOFMTGC; i++)
             {
-                br.ReadInt32();
+                submeshBuffer.boneGroups.Add(br.ReadInt32());
             }
         }
 
         // bone matrices
         private void ReadMATS(BinaryReader br)
         {
-            int numberOfMats = br.ReadInt32();
+            submeshBuffer.bones = new List<List<int>>();
+            submeshBuffer.groups = new List<int>();
+            int numberOfMats = br.ReadInt32();              // coincides with the number of bones
+
             for (int i = 0; i < numberOfMats; i++)
             {
                 br.ReadInt32();
             }
+            // I'm not really using this  v
+            /*
+            int n = 0;
+            int o = 0;
+            for (int i = 0; i < numberOfMats; i++)
+            {
+                if ((n == 0) || (o == submeshBuffer.boneGroups[n]))
+                {
+                    n++;
+                    o = 0;
+                    submeshBuffer.bones[n] = new List<int>();
+                }
+                o++;
+                submeshBuffer.bones[n][o] = br.ReadInt32();
+                bool b = true;
+                for (int l = 0; l < submeshBuffer.groups.Count; l++)
+                {
+                    if (submeshBuffer.groups[l] == submeshBuffer.bones[n][o])
+                    {
+                        b = false;
+                        break;
+                    }
+                }
+                if (b)
+                {
+                    int index = submeshBuffer.groups.Count;
+                    submeshBuffer.groups[index] = submeshBuffer.bones[n][o];
+                }
+                submeshBuffer.groups.Sort();
+            }
+            */
             submeshBuffer.id = br.ReadInt32();              // submesh ID, used for correctly assigning materials
             br.ReadBytes(12);                               // same ID repeats 3 times
             submeshBuffer.name = ReadString(br, 112);       // submesh name
@@ -325,13 +609,21 @@ namespace MDX
             }
         }
 
-        // ??? vertex weights maybe
+        // bone weights
         private void ReadSKIN(BinaryReader br)
         {
-            int numberOfSkins = br.ReadInt32(); // @ 100 to 50k
-            for (int i = 0; i < numberOfSkins; i++)
+            submeshBuffer.boneWeights = new BoneWeight[submeshBuffer.vertices.Count];
+            int numberOfSkins = br.ReadInt32(); // numberOfVerts * 8
+            for (int i = 0; i < numberOfSkins / 8; i++)
             {
-                byte b = br.ReadByte();
+                submeshBuffer.boneWeights[i].boneIndex0 = br.ReadByte();
+                submeshBuffer.boneWeights[i].boneIndex1 = br.ReadByte();
+                submeshBuffer.boneWeights[i].boneIndex2 = br.ReadByte();
+                submeshBuffer.boneWeights[i].boneIndex3 = br.ReadByte();
+                submeshBuffer.boneWeights[i].weight0 = br.ReadByte() / 255f;
+                submeshBuffer.boneWeights[i].weight1 = br.ReadByte() / 255f;
+                submeshBuffer.boneWeights[i].weight2 = br.ReadByte() / 255f;
+                submeshBuffer.boneWeights[i].weight3 = br.ReadByte() / 255f;
             }
         }
 
@@ -356,9 +648,14 @@ namespace MDX
             data.model.submeshes.Add(submeshBuffer);
         }
 
+        #endregion
+
         public void BuildModel()
         {
-            Debug.Log("Building Model : " + data.model.name + " | " + "Submesh Count : " + data.model.submeshCount);
+            Debug.Log("Building Model : " + data.model.name +
+                        " | Meshes: " + data.model.submeshCount.ToString() +
+                        " | Bones: " + data.model.bones.Count.ToString() +
+                        " | Animations: " + data.model.animationSequences.Count.ToString());
 
             // filter out LOD1 LOD2 LOD3 // the lazy way
             List<int> LoD0Indices = new List<int>();
@@ -374,6 +671,17 @@ namespace MDX
             GameObject model = new GameObject();
             model.name = data.model.name;
 
+            Transform[] bones = BuildBones(model);
+            BuildMeshes(model, LoD0Indices, bones);
+            BuildAnimations(model, bones);
+        }
+
+        private void BuildMeshes(GameObject obj, List<int> LoD0Indices, Transform[] bones)
+        {
+            // Group Object
+            GameObject meshesGroup = new GameObject("Meshes");
+            meshesGroup.transform.SetParent(obj.transform);
+
             // Submeshes
             for (int sm = 0; sm < LoD0Indices.Count; sm++)
             {
@@ -382,7 +690,7 @@ namespace MDX
                 // Object
                 GameObject submesh = new GameObject();
                 submesh.name = data.model.submeshes[index].name;
-                submesh.transform.SetParent(model.transform);
+                submesh.transform.SetParent(meshesGroup.transform);
 
                 // Mesh
                 Mesh m = new Mesh();
@@ -391,10 +699,23 @@ namespace MDX
                 m.SetNormals(data.model.submeshes[index].normals);
                 m.SetTangents(data.model.submeshes[index].tangents);
                 m.SetUVs(0, data.model.submeshes[index].uvs);
-                MeshRenderer meshRenderer = submesh.AddComponent<MeshRenderer>();
+                SkinnedMeshRenderer meshRenderer = submesh.AddComponent<SkinnedMeshRenderer>();
                 MeshFilter meshFilter = submesh.AddComponent<MeshFilter>();
                 meshFilter.mesh = m;
-                
+
+                // weights
+                m.boneWeights = data.model.submeshes[index].boneWeights;
+
+                // bind poses
+                Matrix4x4[] bindPoses = new Matrix4x4[bones.Length];
+                for (int b = 0; b < bindPoses.Length; b++)
+                {
+                    bindPoses[b] = bones[b].worldToLocalMatrix * submesh.transform.localToWorldMatrix;
+                }
+                m.bindposes = bindPoses;
+                meshRenderer.bones = bones;
+                meshRenderer.sharedMesh = m;
+
                 // Texture
                 string folderPath = Path.GetDirectoryName(filePath);
                 string textureName_ = data.model.textures[data.model.materials[data.model.submeshes[index].id].texture];      // *sweat in RP*
@@ -407,7 +728,7 @@ namespace MDX
                 string ormTexturePath = folderPath + @"\" + textureName_ + "orm" + ".dds";
                 // Material
                 UnityEngine.Material mat = new UnityEngine.Material(defaultMaterial);
-                
+
                 if (File.Exists(diffuseTexturePath))
                 {
                     Texture2D texture = DDS.ImportToTexture2D(diffuseTexturePath);
@@ -429,13 +750,201 @@ namespace MDX
                 {
                     mat.EnableKeyword("_METALLICGLOSSMAP");
                     Texture2D texture = DDS.ImportToTexture2D(ormTexturePath);
-                    mat.SetTexture("_MetallicGlossMap", texture);
+                    //mat.SetTexture("_MetallicGlossMap", texture);
+                    mat.SetTexture("_ORM", texture);
                 }
                 mat.SetFloat("_Glossiness", 0.44f);
                 mat.SetFloat("_GlossMapScale", 0.44f);
                 meshRenderer.material = mat;
             }
         }
+
+        private Transform[] BuildBones(GameObject obj)
+        {
+            // Group Object
+            GameObject bonesGroup = new GameObject("Bones");
+            bonesGroup.transform.SetParent(obj.transform);
+
+            // Bones
+            List<GameObject> bones = new List<GameObject>();
+            Transform[] boneTransforms = new Transform[data.model.bones.Count];
+
+            for (int a = 0; a < data.model.bones.Count; a++)
+            {
+                GameObject bone = new GameObject();
+                bones.Add(bone);
+                bones[a].transform.position = data.model.pivots[a];
+                //bones[a].transform.SetParent(bonesGroup.transform);
+            }
+
+            for (int b = 0; b < data.model.bones.Count; b++)
+            {
+                bones[b].name = data.model.bones[b].name;
+                boneTransforms[b] = bones[b].transform;
+                if (data.model.bones[b].parent == -1)
+                {
+                    bones[b].transform.SetParent(bonesGroup.transform);
+                }
+                else
+                {
+                    bones[b].transform.SetParent(bones[data.model.bones[data.model.bones[b].index].parent].transform);
+                }
+            }
+
+            // Attachments
+            List<GameObject> attachments = new List<GameObject>();
+            Transform[] attachmentTransforms = new Transform[data.model.attachments.Count];
+
+            for (int c = 0; c < data.model.attachments.Count; c++)
+            {
+                GameObject attachment = new GameObject();
+                attachments.Add(attachment);
+                attachments[c].transform.position = data.model.pivots[data.model.attachments[c].index];
+                //attachments[c].transform.SetParent(bonesGroup.transform);
+            }
+
+            for (int d = 0; d < data.model.attachments.Count; d++)
+            {
+                attachments[d].name =data.model.attachments[d].name;
+                attachmentTransforms[d] = attachments[d].transform;
+                if (data.model.attachments[d].parent == -1)
+                {
+                    attachments[d].transform.SetParent(bonesGroup.transform);
+                }
+                else
+                {
+                    attachments[d].transform.SetParent(bones[data.model.attachments[d].parent].transform);
+                }
+            }
+
+            // DEBUG
+            Camera.main.GetComponent<ViewSkeleton>().rootNode = bonesGroup.transform;
+            Camera.main.GetComponent<ViewSkeleton>().PopulateChildren();
+
+            return boneTransforms;
+        }
+
+
+        private void BuildAnimations(GameObject obj, Transform[] bones)
+        {
+            
+            // Animations //
+            Animation anim = obj.AddComponent<Animation>();
+            AnimationClip clip = new AnimationClip();
+
+            for (int p = 0; p < data.model.bones.Count; p++)
+            {
+                
+                AnimationCurve rotation_x_curve = new AnimationCurve();
+                AnimationCurve rotation_y_curve = new AnimationCurve();
+                AnimationCurve rotation_z_curve = new AnimationCurve();
+                AnimationCurve rotation_w_curve = new AnimationCurve();
+
+                AnimationCurve translation_x_curve = new AnimationCurve();
+                AnimationCurve translation_y_curve = new AnimationCurve();
+                AnimationCurve translation_z_curve = new AnimationCurve();
+
+                if (data.model.bones[p].rotation != null)
+                {
+                    Keyframe[] rotation_x_keyframes = new Keyframe[data.model.bones[p].rotation.Count];
+                    Keyframe[] rotation_y_keyframes = new Keyframe[data.model.bones[p].rotation.Count];
+                    Keyframe[] rotation_z_keyframes = new Keyframe[data.model.bones[p].rotation.Count];
+                    Keyframe[] rotation_w_keyframes = new Keyframe[data.model.bones[p].rotation.Count];
+
+                    for (int t = 0; t < data.model.bones[p].rotation.Count; t++)
+                    {
+                        if (data.model.bones[p].rotation[t].inTan != null)
+                        {
+                            Quaternion point = (Quaternion)data.model.bones[p].rotation[t].point;
+                            Quaternion inTan = (Quaternion)data.model.bones[p].rotation[t].inTan;
+                            Quaternion outTan = (Quaternion)data.model.bones[p].rotation[t].outTan;
+
+                            rotation_x_keyframes[t] = new Keyframe(data.model.bones[p].rotation[t].time / 1000f, point.x, inTan.x, outTan.x);
+                            rotation_y_keyframes[t] = new Keyframe(data.model.bones[p].rotation[t].time / 1000f, point.y, inTan.y, outTan.y);
+                            rotation_z_keyframes[t] = new Keyframe(data.model.bones[p].rotation[t].time / 1000f, point.z, inTan.z, outTan.z);
+                            rotation_w_keyframes[t] = new Keyframe(data.model.bones[p].rotation[t].time / 1000f, point.w, inTan.w, outTan.w);
+                        }
+                        else
+                        {
+                            Quaternion point = (Quaternion)data.model.bones[p].rotation[t].point;
+
+                            rotation_x_keyframes[t] = new Keyframe(data.model.bones[p].rotation[t].time / 1000f, point.x);
+                            rotation_y_keyframes[t] = new Keyframe(data.model.bones[p].rotation[t].time / 1000f, point.y);
+                            rotation_z_keyframes[t] = new Keyframe(data.model.bones[p].rotation[t].time / 1000f, point.z);
+                            rotation_w_keyframes[t] = new Keyframe(data.model.bones[p].rotation[t].time / 1000f, point.w);
+                        }
+                    }
+
+                    rotation_x_curve.keys = rotation_x_keyframes;
+                    rotation_y_curve.keys = rotation_y_keyframes;
+                    rotation_z_curve.keys = rotation_z_keyframes;
+                    rotation_w_curve.keys = rotation_w_keyframes;
+
+                    string bonePath = GetGameObjectPath(bones[p].gameObject);
+                    clip.SetCurve(bonePath, typeof(Transform), "localRotation.x", rotation_x_curve);
+                    clip.SetCurve(bonePath, typeof(Transform), "localRotation.y", rotation_y_curve);
+                    clip.SetCurve(bonePath, typeof(Transform), "localRotation.z", rotation_z_curve);
+                    clip.SetCurve(bonePath, typeof(Transform), "localRotation.w", rotation_w_curve);
+                }
+                
+                if (data.model.bones[p].translation != null)
+                {
+                    Keyframe[] translation_x_keyframes = new Keyframe[data.model.bones[p].translation.Count];
+                    Keyframe[] translation_y_keyframes = new Keyframe[data.model.bones[p].translation.Count];
+                    Keyframe[] translation_z_keyframes = new Keyframe[data.model.bones[p].translation.Count];
+
+                    for (int t = 0; t < translation_x_keyframes.Length; t++)
+                    {
+                        
+                        if (data.model.bones[p].translation[t].inTan != null)
+                        {
+                            Vector3 point = (Vector3)data.model.bones[p].translation[t].point + bones[p].transform.localPosition;
+                            Vector3 inTan = (Vector3)data.model.bones[p].translation[t].inTan + bones[p].transform.localPosition;
+                            Vector3 outTan = (Vector3)data.model.bones[p].translation[t].outTan + bones[p].transform.localPosition;
+
+                            translation_x_keyframes[t] = new Keyframe(data.model.bones[p].translation[t].time / 1000f, point.x, inTan.x, outTan.x);
+                            translation_y_keyframes[t] = new Keyframe(data.model.bones[p].translation[t].time / 1000f, point.y, inTan.y, outTan.y);
+                            translation_z_keyframes[t] = new Keyframe(data.model.bones[p].translation[t].time / 1000f, point.z, inTan.z, outTan.z);
+                        }
+                        
+                        else
+                        {
+                            Vector3 point = (Vector3)data.model.bones[p].translation[t].point + bones[p].transform.localPosition;
+
+                            translation_x_keyframes[t] = new Keyframe(data.model.bones[p].translation[t].time / 1000f, point.x);
+                            translation_y_keyframes[t] = new Keyframe(data.model.bones[p].translation[t].time / 1000f, point.y);
+                            translation_z_keyframes[t] = new Keyframe(data.model.bones[p].translation[t].time / 1000f, point.z);
+                        }
+                    }
+
+                    translation_x_curve.keys = translation_x_keyframes;
+                    translation_y_curve.keys = translation_y_keyframes;
+                    translation_z_curve.keys = translation_z_keyframes;
+
+                    string bonePath = GetGameObjectPath(bones[p].gameObject);
+                    clip.SetCurve(bonePath, typeof(Transform), "localPosition.x", translation_x_curve);
+                    clip.SetCurve(bonePath, typeof(Transform), "localPosition.y", translation_y_curve);
+                    clip.SetCurve(bonePath, typeof(Transform), "localPosition.z", translation_z_curve);
+                }
+                
+                    
+            }
+            clip.legacy = true;
+            clip.wrapMode = WrapMode.Loop;
+            /*
+            for (int c = 0; c < data.model.animationSequences.Count; c++)
+            {
+                anim.AddClip(clip, data.model.animationSequences[c].name, data.model.animationSequences[c].seqIntStart/60, data.model.animationSequences[c].seqIntEnd/60);
+            }
+            */
+            anim.AddClip(clip, "clip");
+
+            anim.Play("clip");
+            
+            //print(GetGameObjectPath(bones[10].gameObject));
+        }
+
+        #region Helpers
 
         public string RemoveInvalidChars(string filename)
         {
@@ -460,6 +969,21 @@ namespace MDX
             }
             return new string(collectedChars.ToArray());
         }
+
+        public static string GetGameObjectPath(GameObject obj)
+        {
+            string path = "/" + obj.name;
+            while (obj.transform.parent != null)
+            {
+                obj = obj.transform.parent.gameObject;
+                path = "/" + obj.name + path;
+            }
+            return path;
+        }
+
+        #endregion
+
+
 
         /*
                 --MDLX HEAD

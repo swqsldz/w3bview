@@ -1,12 +1,13 @@
 ﻿// Unity built-in shader source. Copyright (c) 2016 Unity Technologies. MIT license (see license.txt)
 
-Shader "Standard 2-Sided"
+Shader "Zee/Character"
 {
 	Properties
 	{
 		_Color("Color", Color) = (1,1,1,1)
 		_MainTex("Albedo", 2D) = "white" {}
 
+		_ORM("Occlussion Roughness Metallic", 2D) = "white"{}
 		_Cutoff("Alpha Cutoff", Range(0.0, 1.0)) = 0.5
 
 		_Glossiness("Smoothness", Range(0.0, 1.0)) = 0.5

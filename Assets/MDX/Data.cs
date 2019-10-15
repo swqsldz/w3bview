@@ -17,6 +17,10 @@ namespace MDX
         public List<Submesh> submeshes = new List<Submesh>();
         public List<Material> materials = new List<Material>();
         public List<string> textures = new List<string>();
+        public List<AnimationSequence> animationSequences = new List<AnimationSequence>();
+        public List<Bone> bones = new List<Bone>();
+        public List<Vector3> pivots = new List<Vector3>();
+        public List<Attachment> attachments = new List<Attachment>();
     }
 
     // Submesh
@@ -33,6 +37,11 @@ namespace MDX
         public byte unk4;
         public string name;
         public int id;
+        public int geoBone;
+        public List<int> boneGroups;
+        public List<List<int>> bones = new List<List<int>>();
+        public List<int> groups;
+        public BoneWeight[] boneWeights;
     }
 
     // Material
@@ -46,6 +55,53 @@ namespace MDX
         public int unk3; // ?? always -1
         public float alpha;  // 0
         public byte[] flags; // ?? must be material flags
+    }
+
+    // Animation Sequence
+    public class AnimationSequence
+    {
+        public string name;
+        public int seqIntStart;
+        public int seqIntEnd;
+        public float seqMoveSpeed;
+        public int seqNoLoop;
+        public float seqRarity;
+        public int seqLong;
+    }
+
+    // Bone
+    public class Bone
+    {
+        public string name;
+        public int index;
+        public int parent;
+        public int mesh;
+        public List<TrackPoint> translation;
+        public List<TrackPoint> rotation;
+        public List<TrackPoint> scale;
+        public int id;
+        public int aid;
+        public int end;
+        public int no;
+    }
+
+    // Track Point
+    public class TrackPoint
+    {
+        public int time;
+        public object point;
+        public object inTan;
+        public object outTan;
+    }
+
+    public class Attachment
+    {
+        public string name;
+        public int index;
+        public int parent;
+        public List<TrackPoint> translation;
+        public List<TrackPoint> rotation;
+        public List<TrackPoint> scale;
     }
 
 }
